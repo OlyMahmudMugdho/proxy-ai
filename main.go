@@ -11,7 +11,39 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
+
+// --- Configuration ---
+
+type Config struct {
+	Port          string            `yaml:"port"`
+	OpenAIBaseURL string            `yaml:"openai_base_url"`
+	OpenAIAPIKey  string            `yaml:"openai_api_key"`
+	ModelMapping  map[string]string `yaml:"model_mapping"`
+}
+
+func loadConfig() *Config {
+	cfg := &Config{
+		Port:          "8080",
+		OpenAIBaseURL: "https://api.openai.com/v1",
+		ModelMapping:  make(map[string]string),
+	}
+
+	data, err := os.ReadFile("config.yaml")
+	if err == nil {
+		yaml.Unmarshal(data, cfg)
+		log.Println("Loaded configuration from config.yaml")
+	}
+
+	// Environment overrides
+	if p := os.Getenv("PORT"); p != "" { cfg.Port = p }
+	if u := os.Getenv("OPENAI_BASE_URL"); u != "" { cfg.OpenAIBaseURL = u }
+	if k := os.Getenv("OPENAI_API_KEY"); k != "" { cfg.OpenAIAPIKey = k }
+
+	return cfg
+}
 
 // --- Anthropic Types ---
 
@@ -135,22 +167,18 @@ type OpenAICSDelta struct {
 
 func contentToString(content interface{}) string {
 	switch v := content.(type) {
-	case string:
-		return v
+	case string: return v
 	case []interface{}:
 		var parts []string
 		for _, part := range v {
 			if m, ok := part.(map[string]interface{}); ok {
 				if t, ok := m["type"].(string); ok && t == "text" {
-					if text, ok := m["text"].(string); ok {
-						parts = append(parts, text)
-					}
+					if text, ok := m["text"].(string); ok { parts = append(parts, text) }
 				}
 			}
 		}
 		return strings.Join(parts, "")
-	default:
-		return ""
+	default: return ""
 	}
 }
 
@@ -189,13 +217,11 @@ func translateMessages(antMsgs []AnthropicMessage) []OpenAIMessage {
 					case "tool_result":
 						oaMsg.Role = "tool"
 						oaMsg.ToolCallID = mPart["tool_use_id"].(string)
-						oaMsg.Content = contentToString(mPart["content"])
+						oaMsg.Content = mPart["content"]
 					}
 				}
 			}
-			if len(textParts) > 0 {
-				oaMsg.Content = strings.Join(textParts, "")
-			}
+			if len(textParts) > 0 { oaMsg.Content = strings.Join(textParts, "") }
 		}
 		oaMsgs = append(oaMsgs, oaMsg)
 	}
@@ -203,19 +229,27 @@ func translateMessages(antMsgs []AnthropicMessage) []OpenAIMessage {
 }
 
 func main() {
-	openaiBaseURL := os.Getenv("OPENAI_BASE_URL")
-	if openaiBaseURL == "" {
-		openaiBaseURL = "https://api.openai.com/v1"
-	}
-	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
+	cfg := loadConfig()
 
 	http.HandleFunc("/v1/messages", func(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, _ := io.ReadAll(r.Body)
 		var antReq AnthropicRequest
 		json.Unmarshal(bodyBytes, &antReq)
 
+		// Dynamic Mapping
+		targetModel := antReq.Model
+		log.Printf("DEBUG: Incoming model: '%s'", antReq.Model)
+		for k, v := range cfg.ModelMapping {
+			log.Printf("DEBUG: Available mapping: '%s' -> '%s'", k, v)
+		}
+		if mapped, ok := cfg.ModelMapping[antReq.Model]; ok {
+			targetModel = mapped
+		}
+
+		log.Printf("Mapping: %s -> %s (stream: %v)", antReq.Model, targetModel, antReq.Stream)
+
 		oaReq := OpenAIRequest{
-			Model: antReq.Model, MaxTokens: antReq.MaxTokens, Stream: antReq.Stream, Temperature: antReq.Temperature,
+			Model: targetModel, MaxTokens: antReq.MaxTokens, Stream: antReq.Stream, Temperature: antReq.Temperature,
 		}
 		if s := contentToString(antReq.System); s != "" {
 			oaReq.Messages = append(oaReq.Messages, OpenAIMessage{Role: "system", Content: s})
@@ -224,42 +258,37 @@ func main() {
 
 		for _, t := range antReq.Tools {
 			ot := OpenAITool{Type: "function"}
-			ot.Function.Name = t.Name
-			ot.Function.Description = t.Description
-			ot.Function.Parameters = t.InputSchema
+			ot.Function.Name = t.Name; ot.Function.Description = t.Description; ot.Function.Parameters = t.InputSchema
 			oaReq.Tools = append(oaReq.Tools, ot)
 		}
 
 		payload, _ := json.Marshal(oaReq)
-		req, _ := http.NewRequest(http.MethodPost, openaiBaseURL+"/chat/completions", bytes.NewBuffer(payload))
+		req, _ := http.NewRequest(http.MethodPost, cfg.OpenAIBaseURL+"/chat/completions", bytes.NewBuffer(payload))
 		req.Header.Set("Content-Type", "application/json")
 
-		token := openaiAPIKey
+		token := cfg.OpenAIAPIKey
 		if token == "" {
 			token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			if token == "" {
-				token = r.Header.Get("X-Api-Key")
-			}
+			if token == "" { token = r.Header.Get("X-Api-Key") }
 		}
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
+		if token != "" { req.Header.Set("Authorization", "Bearer "+token) }
 
 		resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
+		if err != nil { http.Error(w, err.Error(), 500); return }
 		defer resp.Body.Close()
 
-		displayModel := "claude-3-7-sonnet-20250219"
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			log.Printf("Backend returned error %d: %s", resp.StatusCode, string(body))
+			w.WriteHeader(resp.StatusCode)
+			w.Write(body)
+			return
+		}
 
 		if antReq.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			flusher := w.(http.Flusher)
 			scanner := bufio.NewScanner(resp.Body)
-			
-			// Stream State
 			first := true
 			msgID := "msg_" + time.Now().Format("20060102150405")
 			nextIdx := 0
@@ -282,15 +311,13 @@ func main() {
 					sendEvent(w, "message_start", map[string]interface{}{
 						"type": "message_start",
 						"message": map[string]interface{}{
-							"id": msgID, "type": "message", "role": "assistant", "model": displayModel,
+							"id": msgID, "type": "message", "role": "assistant", "model": antReq.Model,
 						},
 					})
 					first = false
 				}
 
-				if oaDelta.Usage != nil {
-					finalUsage = oaDelta.Usage
-				}
+				if oaDelta.Usage != nil { finalUsage = oaDelta.Usage }
 
 				if len(oaDelta.Choices) > 0 {
 					d := oaDelta.Choices[0].Delta
@@ -300,7 +327,6 @@ func main() {
 						if activeToolID != "" { finalStopReason = "tool_use" }
 					}
 
-					// 1. Reasoning
 					rStr := d.Reasoning
 					if rStr == "" { rStr = d.ReasoningContent }
 					if rStr != "" {
@@ -317,7 +343,6 @@ func main() {
 						})
 					}
 
-					// 2. Tool Calls
 					if len(d.ToolCalls) > 0 {
 						tc := d.ToolCalls[0]
 						if tc.ID != "" {
@@ -346,7 +371,6 @@ func main() {
 						}
 					}
 
-					// 3. Text
 					if d.Content != "" {
 						if thinkingIdx != -1 {
 							sendEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": thinkingIdx})
@@ -368,7 +392,6 @@ func main() {
 				flusher.Flush()
 			}
 
-			// Finalize all blocks and send stop events
 			if thinkingIdx != -1 { sendEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": thinkingIdx}) }
 			if textIdx != -1 { sendEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": textIdx}) }
 			if toolIdx != -1 { sendEvent(w, "content_block_stop", map[string]interface{}{"type": "content_block_stop", "index": toolIdx}) }
@@ -377,19 +400,16 @@ func main() {
 				"type": "message_delta",
 				"delta": map[string]interface{}{"stop_reason": finalStopReason, "stop_sequence": nil},
 			}
-			if finalUsage != nil {
-				mDelta["usage"] = map[string]interface{}{"output_tokens": finalUsage.CompletionTokens}
-			}
+			if finalUsage != nil { mDelta["usage"] = map[string]interface{}{"output_tokens": finalUsage.CompletionTokens} }
 			sendEvent(w, "message_delta", mDelta)
 			sendEvent(w, "message_stop", map[string]interface{}{"type": "message_stop"})
 			flusher.Flush()
 			return
 		}
 
-		// Non-stream
 		var oaResp OpenAIResponse
 		json.NewDecoder(resp.Body).Decode(&oaResp)
-		antResp := AnthropicResponse{ID: oaResp.ID, Type: "message", Role: "assistant", Model: displayModel}
+		antResp := AnthropicResponse{ID: oaResp.ID, Type: "message", Role: "assistant", Model: antReq.Model}
 		if len(oaResp.Choices) > 0 {
 			c := oaResp.Choices[0].Message
 			rT := c.Reasoning
@@ -414,10 +434,8 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]int{"input_tokens": 0})
 	})
 
-	port := os.Getenv("PORT")
-	if port == "" { port = "8080" }
-	log.Printf("Starting proxy on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Printf("Starting proxy on :%s", cfg.Port)
+	log.Fatal(http.ListenAndServe(":"+cfg.Port, nil))
 }
 
 func sendEvent(w io.Writer, event string, data interface{}) {
