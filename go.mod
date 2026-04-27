@@ -1,4 +1,4 @@
-module anthropic-proxy
+module proxy-ai
 
 go 1.25.5
 
