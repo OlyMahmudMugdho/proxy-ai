@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"proxy-ai/internal/config"
 	"proxy-ai/internal/proxy"
+	"proxy-ai/internal/ui"
 	"strings"
 )
 
@@ -24,7 +25,22 @@ func main() {
 
 	// 1. SERVE MODE
 	if len(args) > 0 && args[0] == "serve" {
+		http.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				ui.HandleGetConfig(cfg, w, r)
+			} else if r.Method == http.MethodPost {
+				ui.HandleSaveConfig(cfg, w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		})
+
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/" {
+				ui.ServeUI(w, r)
+				return
+			}
+
 			if strings.HasSuffix(r.URL.Path, "/v1/messages") {
 				proxy.HandleMessages(cfg, w, r)
 			} else if strings.HasSuffix(r.URL.Path, "/v1/messages/count_tokens") {

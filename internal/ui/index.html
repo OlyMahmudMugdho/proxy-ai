@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy-AI Configuration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        [v-cloak] { display: none; }
+        .modal-overlay { background-color: rgba(0, 0, 0, 0.5); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans text-gray-900">
+    <div id="app" class="max-w-5xl mx-auto px-4 py-8" v-cloak>
+        <!-- Header -->
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Proxy-AI Config</h1>
+            </div>
+            <div class="flex gap-3">
+                <button @click="saveConfig" :disabled="saving" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm disabled:opacity-50 flex items-center gap-2">
+                    <svg v-if="saving" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span>{{ saving ? 'Saving Changes...' : 'Save All Changes' }}</span>
+                </button>
+                <button @click="showAddModal = true" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-5 py-2.5 rounded-lg font-semibold transition-all shadow-sm">
+                    Add New Profile
+                </button>
+            </div>
+        </header>
+
+        <!-- Status Messages -->
+        <div v-if="error" class="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg shadow-sm flex items-center gap-3">
+            <svg class="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+            <span class="text-red-700 font-medium">{{ error }}</span>
+        </div>
+
+        <div v-if="success" class="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-r-lg shadow-sm flex items-center gap-3">
+            <svg class="h-5 w-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            <span class="text-green-700 font-medium">Configuration successfully applied and saved.</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Sidebar: Profile List -->
+            <div class="md:col-span-1">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="px-5 py-4 bg-gray-50 border-b border-gray-200">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-gray-500">Available Profiles</h3>
+                    </div>
+                    <ul class="divide-y divide-gray-100">
+                        <li v-for="(profile, name) in config.profiles" :key="name" 
+                            @click="selectedProfile = name"
+                            :class="['px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors group', selectedProfile === name ? 'bg-indigo-50 border-r-4 border-indigo-600' : '']">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div :class="['w-2 h-2 rounded-full', config.default_profile === name ? 'bg-indigo-600' : 'bg-gray-300']"></div>
+                                    <span :class="['text-sm font-semibold', selectedProfile === name ? 'text-indigo-900' : 'text-gray-700']">{{ name }}</span>
+                                    <span v-if="config.default_profile === name" class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight bg-indigo-100 text-indigo-700 rounded-md">Default</span>
+                                </div>
+                                <button @click.stop="deleteProfile(name)" class="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                            </div>
+                        </li>
+                    </ul>
+                    <div v-if="Object.keys(config.profiles).length === 0" class="p-8 text-center text-gray-400 italic text-sm">
+                        No profiles configured yet.
+                    </div>
+                </div>
+                
+                <div class="mt-8 p-5 bg-white rounded-xl shadow-sm border border-gray-200">
+                    <label class="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Proxy Server Port</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">:</span>
+                        <input type="text" v-model="config.port" class="block w-full pl-6 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main: Profile Editor -->
+            <div class="md:col-span-2">
+                <div v-if="selectedProfile && config.profiles[selectedProfile]" class="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                        <div>
+                            <h3 class="text-2xl font-bold text-gray-900">{{ selectedProfile }}</h3>
+                            <p class="text-gray-500 text-sm">Configure backend settings and model mappings for this profile.</p>
+                        </div>
+                        <button v-if="config.default_profile !== selectedProfile" @click="config.default_profile = selectedProfile" class="whitespace-nowrap inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors">
+                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                            Set as Default
+                        </button>
+                    </div>
+
+                    <div class="space-y-8">
+                        <!-- API Connection -->
+                        <div>
+                            <h4 class="text-sm font-bold uppercase tracking-wider text-gray-400 mb-4 pb-2 border-b border-gray-100">API Connection</h4>
+                            <div class="grid grid-cols-1 gap-6">
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">OpenAI-Compatible Base URL</label>
+                                    <input type="text" v-model="config.profiles[selectedProfile].openai_base_url" placeholder="https://api.openai.com/v1" class="block w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono bg-gray-50">
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">API Key (Stored in YAML)</label>
+                                        <div class="relative">
+                                            <input :type="showKey ? 'text' : 'password'" v-model="config.profiles[selectedProfile].openai_api_key" class="block w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono bg-gray-50">
+                                            <button @click="showKey = !showKey" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+                                                <svg v-if="!showKey" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                                <svg v-else class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7 1.274-4.057-5.064-7-9.542-7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7 1.274-4.057-5.064-7 9.542-7 1.234 0 2.397.21 3.476.591M8 5.5a9.96 9.96 0 00-1.524.325M12 9a3 3 0 100 6 3 3 0 000-6z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">API Key Environment Variable</label>
+                                        <input type="text" v-model="config.profiles[selectedProfile].openai_api_key_env" placeholder="e.g., OPENAI_API_KEY" class="block w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono bg-gray-50">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Model Mapping -->
+                        <div>
+                            <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+                                <h4 class="text-sm font-bold uppercase tracking-wider text-gray-400">Model Mappings</h4>
+                                <button @click="addMapping" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                                    <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                    Add New Mapping
+                                </button>
+                            </div>
+                            <div class="space-y-3">
+                                <div v-for="(target, source) in config.profiles[selectedProfile].model_mapping" :key="source" class="flex gap-4 items-center animate-fadeIn">
+                                    <div class="flex-1">
+                                        <input type="text" :value="source" @change="renameMapping(source, $event.target.value)" placeholder="Anthropic Name" class="block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono">
+                                    </div>
+                                    <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                                    <div class="flex-1">
+                                        <input type="text" v-model="config.profiles[selectedProfile].model_mapping[source]" placeholder="Backend Name" class="block w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono">
+                                    </div>
+                                    <button @click="removeMapping(source)" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                </div>
+                                <div v-if="Object.keys(config.profiles[selectedProfile].model_mapping || {}).length === 0" class="text-center py-10 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm italic">
+                                    No custom model mappings defined. Standard names will be passed as-is.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div v-else class="bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 h-96 flex flex-col items-center justify-center text-gray-400">
+                    <svg class="h-16 w-16 mb-4 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                    <p class="font-medium text-lg">Select a profile to configure</p>
+                    <p class="text-sm">Or add a new one using the button above.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Profile Modal -->
+        <div v-if="showAddModal" class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 modal-overlay backdrop-blur-sm">
+            <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 animate-slideUp">
+                <h3 class="text-xl font-bold text-gray-900 mb-2">Create New Profile</h3>
+                <p class="text-gray-500 text-sm mb-6">Give your profile a unique name to distinguish your backends.</p>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Profile Name</label>
+                        <input type="text" v-model="newProfileName" @keyup.enter="confirmAddProfile" placeholder="e.g., deepseek-local, nvidia-api" class="block w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-semibold outline-none" autofocus>
+                        <p v-if="addError" class="mt-2 text-xs text-red-600 font-medium">{{ addError }}</p>
+                    </div>
+                    
+                    <div class="flex gap-3 pt-4">
+                        <button @click="confirmAddProfile" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold transition-all shadow-md">Create Profile</button>
+                        <button @click="closeAddModal" class="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 py-3 rounded-xl font-bold transition-all">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+        const { createApp, ref, onMounted, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                const config = ref({ profiles: {}, port: "8080", default_profile: "" });
+                const selectedProfile = ref(null);
+                const saving = ref(false);
+                const error = ref(null);
+                const success = ref(false);
+                const showKey = ref(false);
+                
+                // Modal State
+                const showAddModal = ref(false);
+                const newProfileName = ref("");
+                const addError = ref("");
+
+                const fetchConfig = async () => {
+                    try {
+                        const res = await fetch('/api/config');
+                        config.value = await res.json();
+                        if (Object.keys(config.value.profiles).length > 0 && !selectedProfile.value) {
+                            selectedProfile.value = config.value.default_profile || Object.keys(config.value.profiles)[0];
+                        }
+                    } catch (e) {
+                        error.value = "Failed to load configuration from server.";
+                    }
+                };
+
+                const saveConfig = async () => {
+                    saving.value = true;
+                    error.value = null;
+                    success.value = false;
+                    try {
+                        const res = await fetch('/api/config', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(config.value)
+                        });
+                        if (!res.ok) throw new Error(await res.text());
+                        success.value = true;
+                        setTimeout(() => success.value = false, 4000);
+                    } catch (e) {
+                        error.value = "Failed to save configuration: " + e.message;
+                    } finally {
+                        saving.value = false;
+                    }
+                };
+
+                const confirmAddProfile = () => {
+                    const name = newProfileName.value.trim();
+                    if (!name) {
+                        addError.value = "Please enter a profile name.";
+                        return;
+                    }
+                    if (config.value.profiles[name]) {
+                        addError.value = "A profile with this name already exists.";
+                        return;
+                    }
+                    
+                    config.value.profiles[name] = {
+                        openai_base_url: "https://api.openai.com/v1",
+                        openai_api_key: "",
+                        openai_api_key_env: "",
+                        model_mapping: {}
+                    };
+                    selectedProfile.value = name;
+                    if (!config.value.default_profile) config.value.default_profile = name;
+                    closeAddModal();
+                };
+
+                const closeAddModal = () => {
+                    showAddModal.value = false;
+                    newProfileName.value = "";
+                    addError.value = "";
+                };
+
+                const deleteProfile = (name) => {
+                    if (confirm(`Are you sure you want to delete profile "${name}"? This cannot be undone.`)) {
+                        delete config.value.profiles[name];
+                        if (selectedProfile.value === name) {
+                            selectedProfile.value = Object.keys(config.value.profiles)[0] || null;
+                        }
+                        if (config.value.default_profile === name) {
+                            config.value.default_profile = Object.keys(config.value.profiles)[0] || "";
+                        }
+                    }
+                };
+
+                const addMapping = () => {
+                    const profile = config.value.profiles[selectedProfile.value];
+                    if (!profile.model_mapping) profile.model_mapping = {};
+                    const newSource = "requested-model-" + Object.keys(profile.model_mapping).length;
+                    profile.model_mapping[newSource] = "target-model-name";
+                };
+
+                const removeMapping = (source) => {
+                    delete config.value.profiles[selectedProfile.value].model_mapping[source];
+                };
+
+                const renameMapping = (oldSource, newSource) => {
+                    if (!newSource || oldSource === newSource) return;
+                    const val = config.value.profiles[selectedProfile.value].model_mapping[oldSource];
+                    delete config.value.profiles[selectedProfile.value].model_mapping[oldSource];
+                    config.value.profiles[selectedProfile.value].model_mapping[newSource] = val;
+                };
+
+                onMounted(fetchConfig);
+
+                return {
+                    config, selectedProfile, saving, error, success, showKey,
+                    showAddModal, newProfileName, addError,
+                    confirmAddProfile, closeAddModal, deleteProfile, addMapping, removeMapping, renameMapping, saveConfig
+                };
+            }
+        }).mount('#app');
+    </script>
+    <style>
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+        .animate-slideUp { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+    </style>
+</body>
+</html>

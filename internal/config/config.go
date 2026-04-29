@@ -9,10 +9,10 @@ import (
 )
 
 type Profile struct {
-	OpenAIBaseURL   string            `yaml:"openai_base_url"`
-	OpenAIAPIKey    string            `yaml:"openai_api_key"`
-	OpenAIAPIKeyEnv string            `yaml:"openai_api_key_env"`
-	ModelMapping    map[string]string `yaml:"model_mapping"`
+	OpenAIBaseURL   string            `yaml:"openai_base_url" json:"openai_base_url"`
+	OpenAIAPIKey    string            `yaml:"openai_api_key" json:"openai_api_key"`
+	OpenAIAPIKeyEnv string            `yaml:"openai_api_key_env" json:"openai_api_key_env"`
+	ModelMapping    map[string]string `yaml:"model_mapping" json:"model_mapping"`
 }
 
 func (p *Profile) GetAPIKey() string {
@@ -26,9 +26,9 @@ func (p *Profile) GetAPIKey() string {
 }
 
 type Config struct {
-	Port           string             `yaml:"port"`
-	Profiles       map[string]Profile `yaml:"profiles"`
-	DefaultProfile string             `yaml:"default_profile"`
+	Port           string             `yaml:"port" json:"port"`
+	Profiles       map[string]Profile `yaml:"profiles" json:"profiles"`
+	DefaultProfile string             `yaml:"default_profile" json:"default_profile"`
 }
 
 func GetHomeDir() string {
