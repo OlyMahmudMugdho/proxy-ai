@@ -4,15 +4,11 @@ Proxy-AI is a high-performance, lightweight gateway designed to bridge the gap b
 
 It allows you to use local LLMs (Ollama, vLLM), specialized providers (DeepSeek, OpenCode, NVIDIA NIM), or any OpenAI-compliant API while maintaining the rich features of Anthropic-native clients, including streaming and tool use.
 
-## 🚀 Key Features
+## Key Features
 
-- **Protocol Translation**: Seamlessly maps Anthropic `/v1/messages` to OpenAI `/v1/chat/completions`.
-- **Smart Streaming**: Full support for Server-Sent Events (SSE) with intelligent mapping of "thinking" or reasoning blocks (e.g., from DeepSeek-R1) into Anthropic's native `thinking` blocks.
-- **Tool Use Support**: Bidirectional translation between Anthropic's tool schema and OpenAI's function calling.
-- **Profile Management**: Multi-backend support with dedicated configurations for model mapping, base URLs, and authentication.
-- **Integrated Launcher**: Acts as a wrapper for the `claude` CLI, automatically configuring the environment for zero-config operation.
-
-## 🛠 Installation & Building
+- Protocol Translation
+...
+## Installation & Building
 
 Ensure you have [Go](https://go.dev/) 1.21+ installed.
 
@@ -27,7 +23,7 @@ make build
 
 The binary will be available at `bin/proxy-ai`.
 
-## ⚙️ Configuration
+## Configuration
 
 Proxy-AI manages its configuration at `~/.proxy-ai/config.yaml`. A default config is created on the first run.
 
@@ -50,7 +46,7 @@ profiles:
       claude-3-5-haiku-20241022: "gpt-4o-mini"
 ```
 
-## 📖 Usage
+## Usage
 
 Proxy-AI is designed to be zero-config after your initial profile setup in `~/.proxy-ai/config.yaml`.
 
@@ -80,7 +76,7 @@ The server will listen on the port defined in your config (default `8080`).
 - **Default Route**: `http://localhost:8080/v1/messages` (uses `default_profile`)
 - **Profile Route**: `http://localhost:8080/{profile_name}/v1/messages` (uses `{profile_name}`)
 
-## 🏗 Project Structure
+## Project Structure
 
 - `cmd/proxy-ai`: Application entry point and CLI logic.
 - `internal/proxy`: Core proxy engine, including request handling and SSE streaming.
@@ -88,6 +84,6 @@ The server will listen on the port defined in your config (default `8080`).
 - `internal/config`: Profile and configuration management.
 - `internal/types`: Type definitions for Anthropic and OpenAI schemas.
 
-## 📜 License
+## License
 
 MIT License. See [LICENSE](LICENSE) for details.
