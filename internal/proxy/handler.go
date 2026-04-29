@@ -62,7 +62,7 @@ func HandleMessages(cfg *config.Config, w http.ResponseWriter, r *http.Request) 
 	req, _ := http.NewRequest(http.MethodPost, p.OpenAIBaseURL+"/chat/completions", bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 
-	token := p.OpenAIAPIKey
+	token := p.GetAPIKey()
 	if token == "" {
 		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token == "" {

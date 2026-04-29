@@ -9,9 +9,20 @@ import (
 )
 
 type Profile struct {
-	OpenAIBaseURL string            `yaml:"openai_base_url"`
-	OpenAIAPIKey  string            `yaml:"openai_api_key"`
-	ModelMapping  map[string]string `yaml:"model_mapping"`
+	OpenAIBaseURL   string            `yaml:"openai_base_url"`
+	OpenAIAPIKey    string            `yaml:"openai_api_key"`
+	OpenAIAPIKeyEnv string            `yaml:"openai_api_key_env"`
+	ModelMapping    map[string]string `yaml:"model_mapping"`
+}
+
+func (p *Profile) GetAPIKey() string {
+	if p.OpenAIAPIKey != "" {
+		return p.OpenAIAPIKey
+	}
+	if p.OpenAIAPIKeyEnv != "" {
+		return os.Getenv(p.OpenAIAPIKeyEnv)
+	}
+	return ""
 }
 
 type Config struct {
