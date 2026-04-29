@@ -1,64 +1,93 @@
-# Anthropic to OpenAI Proxy for Claude Code
+# Proxy-AI: Anthropic to OpenAI Bridge
 
-A lightweight Go proxy that translates Anthropic Messages API calls to OpenAI Chat Completions API. This allows you to use OpenAI-compatible backends (like local LLMs, LiteLLM, or OpenAI itself) with [Claude Code](https://code.claude.com/).
+Proxy-AI is a high-performance, lightweight gateway designed to bridge the gap between tools built for the **Anthropic Messages API** (such as the [Claude Code](https://code.claude.com/) CLI) and **OpenAI-compatible backends**. 
 
-## Features
+It allows you to use local LLMs (Ollama, vLLM), specialized providers (DeepSeek, OpenCode, NVIDIA NIM), or any OpenAI-compliant API while maintaining the rich features of Anthropic-native clients, including streaming and tool use.
 
-- Translates `/v1/messages` to `/v1/chat/completions`.
-- Supports streaming (SSE) with Anthropic event mapping.
-- Forwards necessary headers for Claude Code compatibility.
-- Simple single-binary deployment.
+## 🚀 Key Features
 
-## Usage
+- **Protocol Translation**: Seamlessly maps Anthropic `/v1/messages` to OpenAI `/v1/chat/completions`.
+- **Smart Streaming**: Full support for Server-Sent Events (SSE) with intelligent mapping of "thinking" or reasoning blocks (e.g., from DeepSeek-R1) into Anthropic's native `thinking` blocks.
+- **Tool Use Support**: Bidirectional translation between Anthropic's tool schema and OpenAI's function calling.
+- **Profile Management**: Multi-backend support with dedicated configurations for model mapping, base URLs, and authentication.
+- **Integrated Launcher**: Acts as a wrapper for the `claude` CLI, automatically configuring the environment for zero-config operation.
 
-### 1. Build the proxy
+## 🛠 Installation & Building
 
-```bash
-go build -o anthropic-proxy
-```
-
-### 2. Run the proxy
-
-Set the necessary environment variables:
+Ensure you have [Go](https://go.dev/) 1.21+ installed.
 
 ```bash
-export OPENAI_API_KEY=your-api-key
-export OPENAI_BASE_URL=https://api.openai.com/v1 # Or your custom endpoint
-export PORT=8080
-./anthropic-proxy
+# Clone the repository
+git clone https://github.com/your-username/anthropic-proxy.git
+cd anthropic-proxy
+
+# Build using Makefile
+make build
 ```
 
-### 3. Configure Claude Code
+The binary will be available at `bin/proxy-ai`.
 
-Set the `ANTHROPIC_BASE_URL` to point to your proxy:
+## ⚙️ Configuration
+
+Proxy-AI manages its configuration at `~/.proxy-ai/config.yaml`. A default config is created on the first run.
+
+### Profile Structure
+
+```yaml
+port: "8080"
+default_profile: "my-backend"
+profiles:
+  my-backend:
+    openai_base_url: "https://api.example.com/v1"
+    
+    # Authentication (choose one)
+    openai_api_key: "sk-..."          # Plain text key
+    openai_api_key_env: "MY_API_KEY"  # Load from environment variable
+    
+    # Map Anthropic models requested by the client to backend models
+    model_mapping:
+      claude-3-7-sonnet-20250219: "gpt-4o"
+      claude-3-5-haiku-20241022: "gpt-4o-mini"
+```
+
+## 📖 Usage
+
+Proxy-AI is designed to be zero-config after your initial profile setup in `~/.proxy-ai/config.yaml`.
+
+### 1. Launcher Mode (Claude Code)
+This is the preferred way to use Proxy-AI with Claude Code. The proxy starts the `claude` process and automatically injects the necessary environment variables (`ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`, etc.) based on your profile.
 
 ```bash
-export ANTHROPIC_BASE_URL=http://localhost:8080
-export ANTHROPIC_API_KEY=any-value # Claude Code requires this to be set
+# Uses the 'default_profile' defined in your config
+./bin/proxy-ai
+
+# Use a specific profile (e.g., nvidia)
+./bin/proxy-ai --profile nvidia
+
+# Enable verbose logging to see the proxy translation in real-time
+./bin/proxy-ai --verbose
 ```
 
-If you are using it with LiteLLM or a local model, you might need to set the model name Claude Code uses:
+### 2. Serve Mode
+Run as a standalone proxy server. This is useful if you want to point other clients (like a custom UI or a different CLI) to the proxy.
 
 ```bash
-# Example for a specific model
-export CLAUDE_CODE_MODEL=gpt-4o
+./bin/proxy-ai serve
 ```
 
-## How it works
+The server will listen on the port defined in your config (default `8080`).
 
-The proxy implements the [Anthropic Messages API](https://docs.anthropic.com/claude/reference/messages_post) and maps:
-- `system` prompt to a "system" message in OpenAI.
-- `messages` array to OpenAI `messages`.
-- `stream: true` to OpenAI streaming with event translation:
-    - `message_start`
-    - `content_block_start`
-    - `content_block_delta`
-    - `content_block_stop`
-    - `message_delta`
-    - `message_stop`
+- **Default Route**: `http://localhost:8080/v1/messages` (uses `default_profile`)
+- **Profile Route**: `http://localhost:8080/{profile_name}/v1/messages` (uses `{profile_name}`)
 
-## Limitations
+## 🏗 Project Structure
 
-- Basic token counting (returns 0 for now).
-- Simplified message content handling (concatenates text parts).
-- Assumes the backend supports OpenAI-compatible Chat Completions.
+- `cmd/proxy-ai`: Application entry point and CLI logic.
+- `internal/proxy`: Core proxy engine, including request handling and SSE streaming.
+- `internal/translator`: Transformation logic for messages, tools, and content blocks.
+- `internal/config`: Profile and configuration management.
+- `internal/types`: Type definitions for Anthropic and OpenAI schemas.
+
+## 📜 License
+
+MIT License. See [LICENSE](LICENSE) for details.
